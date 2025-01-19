@@ -290,12 +290,8 @@ if seccion == "Recibidos":
         if forma_pago_seleccionado != "Todos":
             filtered_df = filtered_df[filtered_df["Forma de Pago"] == forma_pago_seleccionado]
 
-        # Mostrar en st.dataframe
         st.subheader("Listado Filtrado Recibidos")
         st.dataframe(filtered_df, width=2000)
-
-        # Actualizar la columna "Deducible" en st.session_state.df_recibidos
-        # (En st.dataframe no se editan valores directamente, así que omitimos esa parte)
 
         tabs_recibidos = st.tabs(["Deducibles", "No Deducibles"])
 
@@ -381,12 +377,8 @@ elif seccion == "Emitidos":
         if forma_pago_seleccionado_e != "Todos":
             filtered_df_e = filtered_df_e[filtered_df_e["Forma de Pago"] == forma_pago_seleccionado_e]
 
-        # Mostrar en st.dataframe
         st.subheader("Listado Filtrado Emitidos")
         st.dataframe(filtered_df_e, width=2000)
-
-        # Actualizar la columna "Seleccionar" en st.session_state.df_emitidos
-        # (De nuevo, no se pueden editar valores directamente con st.dataframe)
 
         tabs_emitidos = st.tabs(["CFDIs Seleccionados", "CFDIs No Seleccionados"])
 
@@ -419,19 +411,19 @@ elif seccion == "Resumen":
         "Traslado IVA 0.160000 %"
     ]
 
-    # Resumen Recibidos con agrupación por RFC, Nombre Emisor y Conceptos
+    # Resumen Recibidos
     if "df_recibidos" in st.session_state:
         df_rec = st.session_state.df_recibidos
         if not df_rec.empty:
             st.subheader("Resumen Recibidos")
-            # Calcular y mostrar la sumatoria global para Recibidos
+            # Sumatoria global Recibidos
             global_sumas_rec = {}
             for col in resumen_cols:
                 global_sumas_rec[col] = pd.to_numeric(df_rec[col], errors='coerce').sum()
             st.markdown("**Sumatoria Global de Recibidos:**")
             st.table(pd.DataFrame([global_sumas_rec]))
 
-            # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
+            # Agrupación y sumas
             resumen_rec = df_rec.groupby(
                 ["Rfc Emisor", "Nombre Emisor", "Conceptos"]
             )[resumen_cols].sum().reset_index()
@@ -441,19 +433,19 @@ elif seccion == "Resumen":
     else:
         st.write("No hay datos de Recibidos.")
 
-    # Resumen Emitidos con agrupación por RFC, Nombre Emisor y Conceptos
+    # Resumen Emitidos
     if "df_emitidos" in st.session_state:
         df_emit = st.session_state.df_emitidos
         if not df_emit.empty:
             st.subheader("Resumen Emitidos")
-            # Calcular y mostrar la sumatoria global para Emitidos
+            # Sumatoria global Emitidos
             global_sumas_emit = {}
             for col in resumen_cols:
                 global_sumas_emit[col] = pd.to_numeric(df_emit[col], errors='coerce').sum()
             st.markdown("**Sumatoria Global de Emitidos:**")
             st.table(pd.DataFrame([global_sumas_emit]))
 
-            # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
+            # Agrupación y sumas
             resumen_emit = df_emit.groupby(
                 ["Rfc Emisor", "Nombre Emisor", "Conceptos"]
             )[resumen_cols].sum().reset_index()
