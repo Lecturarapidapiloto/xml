@@ -1,3 +1,4 @@
+streamlit as st
 import zipfile
 import io
 import xml.etree.ElementTree as ET
@@ -405,3 +406,7 @@ elif seccion == "Resumen":
             # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
             resumen_emit = df_emit.groupby(["Rfc Emisor", "Nombre Emisor", "Conceptos"])[resumen_cols].sum().reset_index()
             st.dataframe(resumen_emit)
+        else:
+            st.write("No hay datos de Emitidos.")
+    else:
+        st.write("No hay datos de Emitidos.")
