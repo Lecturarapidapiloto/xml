@@ -1,5 +1,11 @@
+
+AgGrid
 streamlit
 pandas
 xmltodict
 openpyxl
 numpy
+zipfile
+io
+xml.etree.ElementTree 
+
