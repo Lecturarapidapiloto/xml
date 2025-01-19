@@ -1,6 +1,6 @@
 streamlit
 pandas
-st-aggrid==0.2.3
+st-aggrid
 xmltodict
 openpyxl
 numpy
