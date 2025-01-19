@@ -192,14 +192,18 @@ def procesar_zip(uploaded_file):
                     lista_conceptos = []
                     for concepto in conceptos:
                         desc = concepto.attrib.get("Descripcion", "")
-                        importe = concepto.attrib.get("Importe", "")
-                        lista_conceptos.append(f"{desc}: {importe}")
+                        imp_concepto = concepto.attrib.get("Importe", "")
+                        lista_conceptos.append(f"{desc}: {imp_concepto}")
                     row["Conceptos"] = "; ".join(lista_conceptos)
 
                     rows.append(row)
     return rows
 
 def mostrar_sumatorias(df, columnas_sumar):
+    """
+    Devuelve un diccionario con la suma de las columnas numéricas
+    de 'df' especificadas en 'columnas_sumar'.
+    """
     sumas = {}
     for col in columnas_sumar:
         sumas[col] = pd.to_numeric(df[col], errors='coerce').sum()
@@ -291,7 +295,41 @@ if seccion == "Recibidos":
             filtered_df = filtered_df[filtered_df["Forma de Pago"] == forma_pago_seleccionado]
 
         st.subheader("Listado Filtrado Recibidos")
-        st.dataframe(filtered_df, width=2000)
+
+        # Aseguramos que la columna "Deducible" vaya al inicio (lado izquierdo)
+        if "Deducible" in filtered_df.columns:
+            col_order = ["Deducible"] + [c for c in filtered_df.columns if c != "Deducible"]
+            filtered_df = filtered_df[col_order]
+
+        # Reemplazamos la visualización de dataframe por data_editor
+        edited_filtered_df = st.data_editor(
+            filtered_df,
+            column_config={
+                "Deducible": st.column_config.CheckboxColumn(
+                    "Deducible",
+                    help="Marcar para deducible, desmarcar para no deducible",
+                    width=100
+                )
+            },
+            # Deshabilitamos edición de columnas que no deben cambiarse
+            disabled=[
+                "XML", "Rfc Emisor", "Nombre Emisor", "Régimen Fiscal Emisor",
+                "Rfc Receptor", "Nombre Receptor", "CP Receptor", "Régimen Receptor",
+                "Uso Cfdi Receptor", "Tipo", "Serie", "Folio", "Fecha", "Sub Total",
+                "Descuento", "Total impuesto Trasladado", "Nombre Impuesto",
+                "Total impuesto Retenido", "Total", "UUID", "Método de Pago",
+                "Forma de Pago", "Moneda", "Tipo de Cambio", "Versión", "Estado",
+                "Estatus", "Validación EFOS", "Fecha Consulta", "Conceptos",
+                "Relacionados", "Tipo Relación", "Traslado IVA 0.160000 %"
+            ],
+            use_container_width=True,
+            hide_index=True,
+            key="recibidos_editor"
+        )
+
+        # Sincronizamos cambios (el índice se conserva al copiar el DataFrame)
+        for i in edited_filtered_df.index:
+            st.session_state.df_recibidos.at[i, "Deducible"] = edited_filtered_df.at[i, "Deducible"]
 
         tabs_recibidos = st.tabs(["Deducibles", "No Deducibles"])
 
@@ -378,7 +416,40 @@ elif seccion == "Emitidos":
             filtered_df_e = filtered_df_e[filtered_df_e["Forma de Pago"] == forma_pago_seleccionado_e]
 
         st.subheader("Listado Filtrado Emitidos")
-        st.dataframe(filtered_df_e, width=2000)
+
+        # Aseguramos que la columna "Seleccionar" vaya al inicio
+        if "Seleccionar" in filtered_df_e.columns:
+            col_order = ["Seleccionar"] + [c for c in filtered_df_e.columns if c != "Seleccionar"]
+            filtered_df_e = filtered_df_e[col_order]
+
+        # Usamos data_editor para permitir marcar/desmarcar "Seleccionar"
+        edited_filtered_df_e = st.data_editor(
+            filtered_df_e,
+            column_config={
+                "Seleccionar": st.column_config.CheckboxColumn(
+                    "Seleccionar",
+                    help="Marcar para incluir, desmarcar para excluir",
+                    width=100
+                )
+            },
+            disabled=[
+                "XML", "Rfc Emisor", "Nombre Emisor", "Régimen Fiscal Emisor",
+                "Rfc Receptor", "Nombre Receptor", "CP Receptor", "Régimen Receptor",
+                "Uso Cfdi Receptor", "Tipo", "Serie", "Folio", "Fecha", "Sub Total",
+                "Descuento", "Total impuesto Trasladado", "Nombre Impuesto",
+                "Total impuesto Retenido", "Total", "UUID", "Método de Pago",
+                "Forma de Pago", "Moneda", "Tipo de Cambio", "Versión", "Estado",
+                "Estatus", "Validación EFOS", "Fecha Consulta", "Conceptos",
+                "Relacionados", "Tipo Relación", "Traslado IVA 0.160000 %"
+            ],
+            use_container_width=True,
+            hide_index=True,
+            key="emitidos_editor"
+        )
+
+        # Sincronizamos cambios en la columna "Seleccionar"
+        for i in edited_filtered_df_e.index:
+            st.session_state.df_emitidos.at[i, "Seleccionar"] = edited_filtered_df_e.at[i, "Seleccionar"]
 
         tabs_emitidos = st.tabs(["CFDIs Seleccionados", "CFDIs No Seleccionados"])
 
@@ -416,14 +487,29 @@ elif seccion == "Resumen":
         df_rec = st.session_state.df_recibidos
         if not df_rec.empty:
             st.subheader("Resumen Recibidos")
-            # Sumatoria global Recibidos
-            global_sumas_rec = {}
-            for col in resumen_cols:
-                global_sumas_rec[col] = pd.to_numeric(df_rec[col], errors='coerce').sum()
-            st.markdown("**Sumatoria Global de Recibidos:**")
+
+            # Sumatoria global de TODOS los CFDIs recibidos
+            global_sumas_rec = mostrar_sumatorias(df_rec, resumen_cols)
+            st.markdown("**Sumatoria Global de Recibidos (Todos):**")
             st.table(pd.DataFrame([global_sumas_rec]))
 
-            # Agrupación y sumas
+            # Sumatorias de deducibles / no deducibles
+            deducibles_df = df_rec[df_rec["Deducible"] == True]
+            no_deducibles_df = df_rec[df_rec["Deducible"] == False]
+
+            if not deducibles_df.empty:
+                st.markdown("**Sumatoria Global de Recibidos (Deducibles):**")
+                st.table(pd.DataFrame([mostrar_sumatorias(deducibles_df, resumen_cols)]))
+            else:
+                st.write("No hay CFDIs deducibles.")
+
+            if not no_deducibles_df.empty:
+                st.markdown("**Sumatoria Global de Recibidos (No Deducibles):**")
+                st.table(pd.DataFrame([mostrar_sumatorias(no_deducibles_df, resumen_cols)]))
+            else:
+                st.write("No hay CFDIs no deducibles.")
+
+            # Agrupación y sumas a detalle
             resumen_rec = df_rec.groupby(
                 ["Rfc Emisor", "Nombre Emisor", "Conceptos"]
             )[resumen_cols].sum().reset_index()
@@ -439,10 +525,8 @@ elif seccion == "Resumen":
         if not df_emit.empty:
             st.subheader("Resumen Emitidos")
             # Sumatoria global Emitidos
-            global_sumas_emit = {}
-            for col in resumen_cols:
-                global_sumas_emit[col] = pd.to_numeric(df_emit[col], errors='coerce').sum()
-            st.markdown("**Sumatoria Global de Emitidos:**")
+            global_sumas_emit = mostrar_sumatorias(df_emit, resumen_cols)
+            st.markdown("**Sumatoria Global de Emitidos (Todos):**")
             st.table(pd.DataFrame([global_sumas_emit]))
 
             # Agrupación y sumas
