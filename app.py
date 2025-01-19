@@ -3,7 +3,6 @@ import zipfile
 import io
 import xml.etree.ElementTree as ET
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode
 
 st.title("Procesador de XMLs desde ZIP - CFDI 4.0")
 
@@ -170,7 +169,10 @@ def procesar_zip(uploaded_file):
                         imp = traslado.attrib.get("Impuesto", "")
                         if imp:
                             impuestos_nombres.add(imp)
-                        if traslado.attrib.get("TasaOCuota") == "0.160000" and traslado.attrib.get("Impuesto") == "002":
+                        if (
+                            traslado.attrib.get("TasaOCuota") == "0.160000"
+                            and traslado.attrib.get("Impuesto") == "002"
+                        ):
                             traslado_iva_016 = importe
 
                     total_retenido = 0.0
@@ -214,13 +216,21 @@ def mostrar_tabla_seccion(df, titulo, ancho=2000):
 seccion = st.sidebar.radio("Seleccione Sección", ["Recibidos", "Emitidos", "Resumen"])
 
 resumen_cols = [
-    "Sub Total", "Descuento", "Total impuesto Trasladado",
-    "Total impuesto Retenido", "Total", "Traslado IVA 0.160000 %"
+    "Sub Total",
+    "Descuento",
+    "Total impuesto Trasladado",
+    "Total impuesto Retenido",
+    "Total",
+    "Traslado IVA 0.160000 %"
 ]
 
 if seccion == "Recibidos":
     st.header("CFDIs Recibidos")
-    uploaded_file_recibidos = st.file_uploader("Cargar archivo ZIP con XMLs Recibidos", type=["zip"], key="recibidos_file")
+    uploaded_file_recibidos = st.file_uploader(
+        "Cargar archivo ZIP con XMLs Recibidos",
+        type=["zip"],
+        key="recibidos_file"
+    )
     if uploaded_file_recibidos is not None and "df_recibidos" not in st.session_state:
         rows = procesar_zip(uploaded_file_recibidos)
         if rows:
@@ -232,67 +242,86 @@ if seccion == "Recibidos":
     if "df_recibidos" in st.session_state:
         columnas_sumar = resumen_cols
         st.sidebar.header("Filtros Recibidos")
-        emisores = ["Todos"] + sorted(
-            st.session_state.df_recibidos.apply(lambda row: f"{row['Rfc Emisor']} - {row['Nombre Emisor']}", axis=1).unique().tolist()
-        )
-        emisores_seleccionado = st.sidebar.selectbox("Filtrar por Emisor (RFC - Nombre)", options=emisores, key="filtro_recibidos_emisor")
-        uso_cfdi_opciones = ["Todos"] + sorted(st.session_state.df_recibidos["Uso Cfdi Receptor"].unique().tolist())
-        uso_cfdi_seleccionado = st.sidebar.selectbox("Filtrar por Uso CFDI Receptor", options=uso_cfdi_opciones, key="filtro_recibidos_uso")
-        forma_pago_opciones = ["Todos"] + sorted(st.session_state.df_recibidos["Forma de Pago"].unique().tolist())
-        forma_pago_seleccionado = st.sidebar.selectbox("Filtrar por Forma de Pago", options=forma_pago_opciones, key="filtro_recibidos_forma")
 
+        # Filtros
+        emisores = ["Todos"] + sorted(
+            st.session_state.df_recibidos.apply(
+                lambda row: f"{row['Rfc Emisor']} - {row['Nombre Emisor']}", axis=1
+            ).unique().tolist()
+        )
+        emisores_seleccionado = st.sidebar.selectbox(
+            "Filtrar por Emisor (RFC - Nombre)",
+            options=emisores,
+            key="filtro_recibidos_emisor"
+        )
+        uso_cfdi_opciones = ["Todos"] + sorted(
+            st.session_state.df_recibidos["Uso Cfdi Receptor"].unique().tolist()
+        )
+        uso_cfdi_seleccionado = st.sidebar.selectbox(
+            "Filtrar por Uso CFDI Receptor",
+            options=uso_cfdi_opciones,
+            key="filtro_recibidos_uso"
+        )
+        forma_pago_opciones = ["Todos"] + sorted(
+            st.session_state.df_recibidos["Forma de Pago"].unique().tolist()
+        )
+        forma_pago_seleccionado = st.sidebar.selectbox(
+            "Filtrar por Forma de Pago",
+            options=forma_pago_opciones,
+            key="filtro_recibidos_forma"
+        )
+
+        # Botones para seleccionar/deseleccionar
         col_sel, col_desel = st.columns(2)
         if col_sel.button("Seleccionar todos", key="sel_all_recibidos"):
             st.session_state.df_recibidos["Deducible"] = True
         if col_desel.button("Deseleccionar todos", key="desel_all_recibidos"):
             st.session_state.df_recibidos["Deducible"] = False
 
+        # Aplicar filtros
         filtered_df = st.session_state.df_recibidos.copy()
         if emisores_seleccionado != "Todos":
-            rfc_emisor_filtrar = emisores_seleccionado.split(' - ')[0]
+            rfc_emisor_filtrar = emisores_seleccionado.split(" - ")[0]
             filtered_df = filtered_df[filtered_df["Rfc Emisor"] == rfc_emisor_filtrar]
+
         if uso_cfdi_seleccionado != "Todos":
             filtered_df = filtered_df[filtered_df["Uso Cfdi Receptor"] == uso_cfdi_seleccionado]
+
         if forma_pago_seleccionado != "Todos":
             filtered_df = filtered_df[filtered_df["Forma de Pago"] == forma_pago_seleccionado]
 
-        gb = GridOptionsBuilder.from_dataframe(filtered_df)
-        gb.configure_column("Deducible", editable=True, cellEditor='agCheckboxCellEditor', pinned=True)
-        gb.configure_default_column(editable=True, resizable=True)
-        gridOptions = gb.build()
+        # Mostrar en st.dataframe
+        st.subheader("Listado Filtrado Recibidos")
+        st.dataframe(filtered_df, width=2000)
 
-        grid_response = AgGrid(
-            filtered_df,
-            gridOptions=gridOptions,
-            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
-            height=600,
-            width=2000,
-            reload_data=True
-        )
-
-        edited_df = pd.DataFrame(grid_response['data'])
-        for _, row in edited_df.iterrows():
-            identifier = row["XML"]
-            st.session_state.df_recibidos.loc[st.session_state.df_recibidos["XML"] == identifier, "Deducible"] = row["Deducible"]
+        # Actualizar la columna "Deducible" en st.session_state.df_recibidos
+        # (En st.dataframe no se editan valores directamente, así que omitimos esa parte)
 
         tabs_recibidos = st.tabs(["Deducibles", "No Deducibles"])
 
         with tabs_recibidos[0]:
-            deducible_df = st.session_state.df_recibidos[st.session_state.df_recibidos["Deducible"] == True]
+            deducible_df = st.session_state.df_recibidos[
+                st.session_state.df_recibidos["Deducible"] == True
+            ]
             mostrar_tabla_seccion(deducible_df, "XMLs Deducibles")
             st.markdown("**Sumatorias para XMLs Deducibles:**")
             st.table(pd.DataFrame([mostrar_sumatorias(deducible_df, columnas_sumar)]))
 
         with tabs_recibidos[1]:
-            no_deducible_df = st.session_state.df_recibidos[st.session_state.df_recibidos["Deducible"] == False]
+            no_deducible_df = st.session_state.df_recibidos[
+                st.session_state.df_recibidos["Deducible"] == False
+            ]
             mostrar_tabla_seccion(no_deducible_df, "XMLs No Deducibles")
             st.markdown("**Sumatorias para XMLs No Deducibles:**")
             st.table(pd.DataFrame([mostrar_sumatorias(no_deducible_df, columnas_sumar)]))
 
 elif seccion == "Emitidos":
     st.header("CFDIs Emitidos")
-    uploaded_file_emitidos = st.file_uploader("Cargar archivo ZIP con XMLs Emitidos", type=["zip"], key="emitidos_file")
+    uploaded_file_emitidos = st.file_uploader(
+        "Cargar archivo ZIP con XMLs Emitidos",
+        type=["zip"],
+        key="emitidos_file"
+    )
     if uploaded_file_emitidos is not None and "df_emitidos" not in st.session_state:
         rows = procesar_zip(uploaded_file_emitidos)
         if rows:
@@ -304,73 +333,92 @@ elif seccion == "Emitidos":
     if "df_emitidos" in st.session_state:
         columnas_sumar = resumen_cols
         st.sidebar.header("Filtros Emitidos")
-        emisores_e = ["Todos"] + sorted(
-            st.session_state.df_emitidos.apply(lambda row: f"{row['Rfc Emisor']} - {row['Nombre Emisor']}", axis=1).unique().tolist()
-        )
-        emisores_seleccionado_e = st.sidebar.selectbox("Filtrar por Emisor (RFC - Nombre)", options=emisores_e, key="filtro_emitidos_emisor")
-        uso_cfdi_opciones_e = ["Todos"] + sorted(st.session_state.df_emitidos["Uso Cfdi Receptor"].unique().tolist())
-        uso_cfdi_seleccionado_e = st.sidebar.selectbox("Filtrar por Uso CFDI Receptor", options=uso_cfdi_opciones_e, key="filtro_emitidos_uso")
-        forma_pago_opciones_e = ["Todos"] + sorted(st.session_state.df_emitidos["Forma de Pago"].unique().tolist())
-        forma_pago_seleccionado_e = st.sidebar.selectbox("Filtrar por Forma de Pago", options=forma_pago_opciones_e, key="filtro_emitidos_forma")
 
+        # Filtros
+        emisores_e = ["Todos"] + sorted(
+            st.session_state.df_emitidos.apply(
+                lambda row: f"{row['Rfc Emisor']} - {row['Nombre Emisor']}", axis=1
+            ).unique().tolist()
+        )
+        emisores_seleccionado_e = st.sidebar.selectbox(
+            "Filtrar por Emisor (RFC - Nombre)",
+            options=emisores_e,
+            key="filtro_emitidos_emisor"
+        )
+        uso_cfdi_opciones_e = ["Todos"] + sorted(
+            st.session_state.df_emitidos["Uso Cfdi Receptor"].unique().tolist()
+        )
+        uso_cfdi_seleccionado_e = st.sidebar.selectbox(
+            "Filtrar por Uso CFDI Receptor",
+            options=uso_cfdi_opciones_e,
+            key="filtro_emitidos_uso"
+        )
+        forma_pago_opciones_e = ["Todos"] + sorted(
+            st.session_state.df_emitidos["Forma de Pago"].unique().tolist()
+        )
+        forma_pago_seleccionado_e = st.sidebar.selectbox(
+            "Filtrar por Forma de Pago",
+            options=forma_pago_opciones_e,
+            key="filtro_emitidos_forma"
+        )
+
+        # Botones para seleccionar/deseleccionar
         col_sel_e, col_desel_e = st.columns(2)
         if col_sel_e.button("Seleccionar todos", key="sel_all_emitidos"):
             st.session_state.df_emitidos["Seleccionar"] = True
         if col_desel_e.button("Deseleccionar todos", key="desel_all_emitidos"):
             st.session_state.df_emitidos["Seleccionar"] = False
 
+        # Aplicar filtros
         filtered_df_e = st.session_state.df_emitidos.copy()
         if emisores_seleccionado_e != "Todos":
-            rfc_emisor_filtrar_e = emisores_seleccionado_e.split(' - ')[0]
+            rfc_emisor_filtrar_e = emisores_seleccionado_e.split(" - ")[0]
             filtered_df_e = filtered_df_e[filtered_df_e["Rfc Emisor"] == rfc_emisor_filtrar_e]
+
         if uso_cfdi_seleccionado_e != "Todos":
             filtered_df_e = filtered_df_e[filtered_df_e["Uso Cfdi Receptor"] == uso_cfdi_seleccionado_e]
+
         if forma_pago_seleccionado_e != "Todos":
             filtered_df_e = filtered_df_e[filtered_df_e["Forma de Pago"] == forma_pago_seleccionado_e]
 
-        gb_e = GridOptionsBuilder.from_dataframe(filtered_df_e)
-        gb_e.configure_column("Seleccionar", editable=True, cellEditor='agCheckboxCellEditor', pinned=True)
-        gb_e.configure_default_column(editable=True, resizable=True)
-        gridOptions_e = gb_e.build()
+        # Mostrar en st.dataframe
+        st.subheader("Listado Filtrado Emitidos")
+        st.dataframe(filtered_df_e, width=2000)
 
-        grid_response_e = AgGrid(
-            filtered_df_e,
-            gridOptions=gridOptions_e,
-            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
-            height=600,
-            width=2000,
-            reload_data=True
-        )
-
-        edited_df_e = pd.DataFrame(grid_response_e['data'])
-        for _, row in edited_df_e.iterrows():
-            identifier = row["XML"]
-            st.session_state.df_emitidos.loc[st.session_state.df_emitidos["XML"] == identifier, "Seleccionar"] = row["Seleccionar"]
+        # Actualizar la columna "Seleccionar" en st.session_state.df_emitidos
+        # (De nuevo, no se pueden editar valores directamente con st.dataframe)
 
         tabs_emitidos = st.tabs(["CFDIs Seleccionados", "CFDIs No Seleccionados"])
 
         with tabs_emitidos[0]:
-            seleccionados_df = st.session_state.df_emitidos[st.session_state.df_emitidos["Seleccionar"] == True]
+            seleccionados_df = st.session_state.df_emitidos[
+                st.session_state.df_emitidos["Seleccionar"] == True
+            ]
             mostrar_tabla_seccion(seleccionados_df, "CFDIs Seleccionados")
             st.markdown("**Sumatorias para CFDIs Seleccionados:**")
             st.table(pd.DataFrame([mostrar_sumatorias(seleccionados_df, columnas_sumar)]))
 
         with tabs_emitidos[1]:
-            no_seleccionados_df = st.session_state.df_emitidos[st.session_state.df_emitidos["Seleccionar"] == False]
+            no_seleccionados_df = st.session_state.df_emitidos[
+                st.session_state.df_emitidos["Seleccionar"] == False
+            ]
             mostrar_tabla_seccion(no_seleccionados_df, "CFDIs No Seleccionados")
             st.markdown("**Sumatorias para CFDIs No Seleccionados:**")
             st.table(pd.DataFrame([mostrar_sumatorias(no_seleccionados_df, columnas_sumar)]))
 
 elif seccion == "Resumen":
     st.header("Resumen")
-    
+
     # Se definen las columnas numéricas para sumar
     resumen_cols = [
-        "Sub Total", "Descuento", "Total impuesto Trasladado",
-        "Total impuesto Retenido", "Total", "Traslado IVA 0.160000 %"
+        "Sub Total",
+        "Descuento",
+        "Total impuesto Trasladado",
+        "Total impuesto Retenido",
+        "Total",
+        "Traslado IVA 0.160000 %"
     ]
-    
+
     # Resumen Recibidos con agrupación por RFC, Nombre Emisor y Conceptos
     if "df_recibidos" in st.session_state:
         df_rec = st.session_state.df_recibidos
@@ -382,15 +430,17 @@ elif seccion == "Resumen":
                 global_sumas_rec[col] = pd.to_numeric(df_rec[col], errors='coerce').sum()
             st.markdown("**Sumatoria Global de Recibidos:**")
             st.table(pd.DataFrame([global_sumas_rec]))
-            
+
             # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
-            resumen_rec = df_rec.groupby(["Rfc Emisor", "Nombre Emisor", "Conceptos"])[resumen_cols].sum().reset_index()
+            resumen_rec = df_rec.groupby(
+                ["Rfc Emisor", "Nombre Emisor", "Conceptos"]
+            )[resumen_cols].sum().reset_index()
             st.dataframe(resumen_rec)
         else:
             st.write("No hay datos de Recibidos.")
     else:
         st.write("No hay datos de Recibidos.")
-    
+
     # Resumen Emitidos con agrupación por RFC, Nombre Emisor y Conceptos
     if "df_emitidos" in st.session_state:
         df_emit = st.session_state.df_emitidos
@@ -402,9 +452,11 @@ elif seccion == "Resumen":
                 global_sumas_emit[col] = pd.to_numeric(df_emit[col], errors='coerce').sum()
             st.markdown("**Sumatoria Global de Emitidos:**")
             st.table(pd.DataFrame([global_sumas_emit]))
-            
+
             # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
-            resumen_emit = df_emit.groupby(["Rfc Emisor", "Nombre Emisor", "Conceptos"])[resumen_cols].sum().reset_index()
+            resumen_emit = df_emit.groupby(
+                ["Rfc Emisor", "Nombre Emisor", "Conceptos"]
+            )[resumen_cols].sum().reset_index()
             st.dataframe(resumen_emit)
         else:
             st.write("No hay datos de Emitidos.")
