@@ -158,26 +158,35 @@ def procesar_zip(uploaded_file):
                     if timbre is not None:
                         row["UUID"] = timbre.attrib.get("UUID", "")
 
-                    total_trasladado = 0.0
+                    # Extraer TotalImpuestosTrasladados
+                    impuestos_elem = comprobante.find("cfdi:Impuestos", namespaces=ns)
+                    total_trasladado = impuestos_elem.attrib.get("TotalImpuestosTrasladados") if impuestos_elem is not None else None
                     impuestos_nombres = set()
                     traslado_iva_016 = ""
-                    for traslado in comprobante.findall(".//cfdi:Traslado", namespaces=ns):
-                        importe = traslado.attrib.get("Importe", "0")
-                        try:
-                            total_trasladado += float(importe)
-                        except (ValueError, TypeError):
-                            pass
-                        imp = traslado.attrib.get("Impuesto", "")
-                        if imp:
-                            impuestos_nombres.add(imp)
-                        if traslado.attrib.get("TasaOCuota") == "0.160000" and traslado.attrib.get("Impuesto") == "002":
-                            traslado_iva_016 = importe
+                    if total_trasladado is None:
+                        total_trasladado = 0.0
+                        for traslado in comprobante.findall(".//cfdi:Traslado", namespaces=ns):
+                            try:
+                                total_trasladado += float(traslado.attrib.get("Importe", "0"))
+                            except (ValueError, TypeError):
+                                pass
+                            imp = traslado.attrib.get("Impuesto", "")
+                            if imp:
+                                impuestos_nombres.add(imp)
+                            if traslado.attrib.get("TasaOCuota") == "0.160000" and traslado.attrib.get("Impuesto") == "002":
+                                traslado_iva_016 = traslado.attrib.get("Importe", "")
+                    else:
+                        for traslado in comprobante.findall(".//cfdi:Traslado", namespaces=ns):
+                            imp = traslado.attrib.get("Impuesto", "")
+                            if imp:
+                                impuestos_nombres.add(imp)
+                            if traslado.attrib.get("TasaOCuota") == "0.160000" and traslado.attrib.get("Impuesto") == "002":
+                                traslado_iva_016 = traslado.attrib.get("Importe", "")
 
                     total_retenido = 0.0
                     for retencion in comprobante.findall(".//cfdi:Retencion", namespaces=ns):
-                        importe = retencion.attrib.get("Importe", "0")
                         try:
-                            total_retenido += float(importe)
+                            total_retenido += float(retencion.attrib.get("Importe", "0"))
                         except (ValueError, TypeError):
                             pass
 
@@ -187,11 +196,7 @@ def procesar_zip(uploaded_file):
                     row["Traslado IVA 0.160000 %"] = traslado_iva_016
 
                     conceptos = comprobante.findall("cfdi:Conceptos/cfdi:Concepto", namespaces=ns)
-                    lista_conceptos = []
-                    for concepto in conceptos:
-                        desc = concepto.attrib.get("Descripcion", "")
-                        importe = concepto.attrib.get("Importe", "")
-                        lista_conceptos.append(f"{desc}: {importe}")
+                    lista_conceptos = [f"{c.attrib.get('Descripcion', '')}: {c.attrib.get('Importe', '')}" for c in conceptos]
                     row["Conceptos"] = "; ".join(lista_conceptos)
 
                     rows.append(row)
@@ -210,6 +215,34 @@ def mostrar_tabla_seccion(df, titulo, ancho=2000):
     else:
         st.dataframe(df, width=ancho)
 
+# Funciones de exportación
+def exportar_csv_single(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+def exportar_csv_multiple(dfs, nombres):
+    with io.BytesIO() as buffer:
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for df, name in zip(dfs, nombres):
+                csv = df.to_csv(index=False)
+                zf.writestr(f"{name}.csv", csv)
+        buffer.seek(0)
+        return buffer.read()
+
+def exportar_excel_single(df):
+    towrite = io.BytesIO()
+    with pd.ExcelWriter(towrite, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Datos')
+    towrite.seek(0)
+    return towrite.read()
+
+def exportar_excel_multiple(dfs, nombres):
+    towrite = io.BytesIO()
+    with pd.ExcelWriter(towrite, engine='xlsxwriter') as writer:
+        for df, name in zip(dfs, nombres):
+            df.to_excel(writer, index=False, sheet_name=name)
+    towrite.seek(0)
+    return towrite.read()
+
 # Configuración de navegación
 seccion = st.sidebar.radio("Seleccione Sección", ["Recibidos", "Emitidos", "Resumen"])
 
@@ -220,6 +253,40 @@ resumen_cols = [
 
 if seccion == "Recibidos":
     st.header("CFDIs Recibidos")
+    
+    # Expander para exportar Recibidos
+    with st.sidebar.expander("Exportar Recibidos"):
+        formato_recibidos = st.radio("Seleccionar formato", ["CSV", "Excel", "PDF"], key="formato_export_recibidos")
+        alcance_recibidos = st.radio("Exportar", ["Tabla Actual", "Toda la Sección"], key="alcance_export_recibidos")
+        if st.button("Exportar Recibidos"):
+            if "df_recibidos" in st.session_state:
+                if alcance_recibidos == "Tabla Actual":
+                    try:
+                        df_exportar_recibidos = filtered_df
+                    except NameError:
+                        df_exportar_recibidos = st.session_state.df_recibidos
+                else:
+                    df_exportar_recibidos = st.session_state.df_recibidos
+
+                if formato_recibidos == "CSV":
+                    datos_csv = exportar_csv_single(df_exportar_recibidos)
+                    st.download_button(
+                        label="Descargar CSV",
+                        data=datos_csv,
+                        file_name="recibidos_tabla_actual.csv",
+                        mime="text/csv"
+                    )
+                elif formato_recibidos == "Excel":
+                    datos_excel = exportar_excel_single(df_exportar_recibidos)
+                    st.download_button(
+                        label="Descargar Excel",
+                        data=datos_excel,
+                        file_name="recibidos_tabla_actual.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                elif formato_recibidos == "PDF":
+                    st.warning("Exportación a PDF no implementada en este ejemplo.")
+
     uploaded_file_recibidos = st.file_uploader("Cargar archivo ZIP con XMLs Recibidos", type=["zip"], key="recibidos_file")
     if uploaded_file_recibidos is not None and "df_recibidos" not in st.session_state:
         rows = procesar_zip(uploaded_file_recibidos)
@@ -265,7 +332,7 @@ if seccion == "Recibidos":
             filtered_df,
             gridOptions=gridOptions,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
+            update_mode=GridUpdateMode.VALUE_CHANGED,
             height=600,
             width=2000,
             reload_data=True
@@ -292,6 +359,39 @@ if seccion == "Recibidos":
 
 elif seccion == "Emitidos":
     st.header("CFDIs Emitidos")
+    
+    with st.sidebar.expander("Exportar Emitidos"):
+        formato_emitidos = st.radio("Seleccionar formato", ["CSV", "Excel", "PDF"], key="formato_export_emitidos")
+        alcance_emitidos = st.radio("Exportar", ["Tabla Actual", "Toda la Sección"], key="alcance_export_emitidos")
+        if st.button("Exportar Emitidos"):
+            if "df_emitidos" in st.session_state:
+                if alcance_emitidos == "Tabla Actual":
+                    try:
+                        df_exportar_emitidos = filtered_df_e
+                    except NameError:
+                        df_exportar_emitidos = st.session_state.df_emitidos
+                else:
+                    df_exportar_emitidos = st.session_state.df_emitidos
+
+                if formato_emitidos == "CSV":
+                    datos_csv = exportar_csv_single(df_exportar_emitidos)
+                    st.download_button(
+                        label="Descargar CSV",
+                        data=datos_csv,
+                        file_name="emitidos_tabla_actual.csv",
+                        mime="text/csv"
+                    )
+                elif formato_emitidos == "Excel":
+                    datos_excel = exportar_excel_single(df_exportar_emitidos)
+                    st.download_button(
+                        label="Descargar Excel",
+                        data=datos_excel,
+                        file_name="emitidos_tabla_actual.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                elif formato_emitidos == "PDF":
+                    st.warning("Exportación a PDF no implementada en este ejemplo.")
+
     uploaded_file_emitidos = st.file_uploader("Cargar archivo ZIP con XMLs Emitidos", type=["zip"], key="emitidos_file")
     if uploaded_file_emitidos is not None and "df_emitidos" not in st.session_state:
         rows = procesar_zip(uploaded_file_emitidos)
@@ -337,7 +437,7 @@ elif seccion == "Emitidos":
             filtered_df_e,
             gridOptions=gridOptions_e,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
+            update_mode=GridUpdateMode.VALUE_CHANGED,
             height=600,
             width=2000,
             reload_data=True
@@ -365,48 +465,56 @@ elif seccion == "Emitidos":
 elif seccion == "Resumen":
     st.header("Resumen")
     
-    # Se definen las columnas numéricas para sumar
-    resumen_cols = [
-        "Sub Total", "Descuento", "Total impuesto Trasladado",
-        "Total impuesto Retenido", "Total", "Traslado IVA 0.160000 %"
-    ]
-    
-    # Resumen Recibidos con agrupación por RFC, Nombre Emisor y Conceptos
-    if "df_recibidos" in st.session_state:
-        df_rec = st.session_state.df_recibidos
-        if not df_rec.empty:
-            st.subheader("Resumen Recibidos")
-            # Calcular y mostrar la sumatoria global para Recibidos
-            global_sumas_rec = {}
-            for col in resumen_cols:
-                global_sumas_rec[col] = pd.to_numeric(df_rec[col], errors='coerce').sum()
-            st.markdown("**Sumatoria Global de Recibidos:**")
-            st.table(pd.DataFrame([global_sumas_rec]))
-            
-            # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
-            resumen_rec = df_rec.groupby(["Rfc Emisor", "Nombre Emisor", "Conceptos"])[resumen_cols].sum().reset_index()
-            st.dataframe(resumen_rec)
+    with st.container():
+        # Sección Resumen para Recibidos
+        if "df_recibidos" in st.session_state:
+            df_rec = st.session_state.df_recibidos
+            if not df_rec.empty:
+                st.subheader("XMLs Deducibles")
+                deducible_df = df_rec[df_rec["Deducible"] == True]
+                if not deducible_df.empty:
+                    st.markdown("**Sumatorias para XMLs Deducibles:**")
+                    st.table(pd.DataFrame([mostrar_sumatorias(deducible_df, resumen_cols)]))
+                    mostrar_tabla_seccion(deducible_df, "XMLs Deducibles")
+                else:
+                    st.write("No hay XMLs Deducibles.")
+                
+                st.subheader("XMLs No Deducibles")
+                no_deducible_df = df_rec[df_rec["Deducible"] == False]
+                if not no_deducible_df.empty:
+                    st.markdown("**Sumatorias para XMLs No Deducibles:**")
+                    st.table(pd.DataFrame([mostrar_sumatorias(no_deducible_df, resumen_cols)]))
+                    mostrar_tabla_seccion(no_deducible_df, "XMLs No Deducibles")
+                else:
+                    st.write("No hay XMLs No Deducibles.")
+            else:
+                st.write("No hay datos de Recibidos.")
         else:
             st.write("No hay datos de Recibidos.")
-    else:
-        st.write("No hay datos de Recibidos.")
     
-    # Resumen Emitidos con agrupación por RFC, Nombre Emisor y Conceptos
-    if "df_emitidos" in st.session_state:
-        df_emit = st.session_state.df_emitidos
-        if not df_emit.empty:
-            st.subheader("Resumen Emitidos")
-            # Calcular y mostrar la sumatoria global para Emitidos
-            global_sumas_emit = {}
-            for col in resumen_cols:
-                global_sumas_emit[col] = pd.to_numeric(df_emit[col], errors='coerce').sum()
-            st.markdown("**Sumatoria Global de Emitidos:**")
-            st.table(pd.DataFrame([global_sumas_emit]))
-            
-            # Agrupar por RFC, Nombre Emisor y Conceptos y sumar valores numéricos
-            resumen_emit = df_emit.groupby(["Rfc Emisor", "Nombre Emisor", "Conceptos"])[resumen_cols].sum().reset_index()
-            st.dataframe(resumen_emit)
+    with st.container():
+        # Sección Resumen para Emitidos
+        if "df_emitidos" in st.session_state:
+            df_emit = st.session_state.df_emitidos
+            if not df_emit.empty:
+                st.subheader("XMLs Emitidos")
+                seleccionados_df = df_emit[df_emit["Seleccionar"] == True]
+                if not seleccionados_df.empty:
+                    st.markdown("**Sumatorias para XMLs Emitidos:**")
+                    st.table(pd.DataFrame([mostrar_sumatorias(seleccionados_df, resumen_cols)]))
+                    mostrar_tabla_seccion(seleccionados_df, "XMLs Emitidos")
+                else:
+                    st.write("No hay XMLs Emitidos.")
+                
+                st.subheader("XMLs Emitidos No Seleccionados")
+                no_seleccionados_df = df_emit[df_emit["Seleccionar"] == False]
+                if not no_seleccionados_df.empty:
+                    st.markdown("**Sumatorias para XMLs Emitidos No Seleccionados:**")
+                    st.table(pd.DataFrame([mostrar_sumatorias(no_seleccionados_df, resumen_cols)]))
+                    mostrar_tabla_seccion(no_seleccionados_df, "XMLs Emitidos No Seleccionados")
+                else:
+                    st.write("No hay XMLs Emitidos No Seleccionados.")
+            else:
+                st.write("No hay datos de Emitidos.")
         else:
             st.write("No hay datos de Emitidos.")
-    else:
-        st.write("No hay datos de Emitidos.")
