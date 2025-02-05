@@ -48,37 +48,8 @@ codigo_map_uso_cfdi = {
     "D08": "Gastos de transportación escolar obligatoria","D09": "Depósitos en cuentas para el ahorro, primas que tengan como base planes de pensiones",
     "D10": "Pagos por servicios educativos (colegiaturas)","S01": "Sin efectos fiscales","CP01": "Pagos","CN01": "Nómina",
 }
-
-# Columnas que deben ser numéricas (para sumas y cálculos)
 resumen_cols = ["Sub Total", "Descuento", "Total impuesto Trasladado",
                 "Total impuesto Retenido", "Total", "Traslado IVA 0.160000 %"]
-
-###############################################################################
-#  FUNCIÓN PARA DETECTAR Y CORREGIR VALORES NO NUMÉRICOS (APLICABLE A CUALQUIER DF)
-###############################################################################
-def detectar_y_corregir_valores(df, columnas_numericas):
-    """
-    Detecta valores no numéricos en las columnas_numericas de un DataFrame
-    y permite corregirlos manualmente usando st.number_input.
-    """
-    for col in columnas_numericas:
-        # Convertir la columna a float, forzando a NaN cualquier valor no numérico
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-        
-        # Filtrar filas con NaN en la columna col
-        filas_nan = df[df[col].isna()]
-        if not filas_nan.empty:
-            st.warning(f"Se han encontrado valores no numéricos o vacíos en la columna '{col}'.")
-            for idx, row in filas_nan.iterrows():
-                # Mostrar un number_input para corregir el valor
-                nuevo_valor = st.number_input(
-                    f"Corregir '{col}' (Archivo: {row.get('XML', 'desconocido')}):",
-                    min_value=0.0,
-                    value=0.0,
-                    key=f"{col}_{idx}"
-                )
-                df.at[idx, col] = nuevo_valor
-    return df
 
 ###############################################################################
 #          FUNCIÓN PARA FILTRAR DUPLICADOS (UUID) AL CARGAR ZIP               #
@@ -174,9 +145,9 @@ def identificar_tipo_zip(rows, tipo_deseado):
     if not rows:
         return False
     if tipo_deseado == "Recibidos":
-        return all(row.get("Rfc Receptor", "") == company_rfc for row in rows)
+        return all(row["Rfc Receptor"] == company_rfc for row in rows)
     elif tipo_deseado == "Emitidos":
-        return all(row.get("Rfc Emisor", "") == company_rfc for row in rows)
+        return all(row["Rfc Emisor"] == company_rfc for row in rows)
     return False
 
 ###############################################################################
@@ -192,73 +163,39 @@ def procesar_zip(uploaded_file):
             if filename.lower().endswith(".xml"):
                 with thezip.open(filename) as xml_file:
                     try:
-                        tree = ET.parse(xml_file)
-                        root = tree.getroot()
+                        tree = ET.parse(xml_file); root = tree.getroot()
                     except ET.ParseError:
                         st.warning(f"Error al parsear el archivo XML: {filename}")
                         continue
-                    row = {
-                        "XML": filename,
-                        "Rfc Emisor": "",
-                        "Nombre Emisor": "",
-                        "Régimen Fiscal Emisor": "",
-                        "Rfc Receptor": "",
-                        "Nombre Receptor": "",
-                        "CP Receptor": "",
-                        "Régimen Receptor": "",
-                        "Uso Cfdi Receptor": "",
-                        "Tipo": "",
-                        "Serie": "",
-                        "Folio": "",
-                        "Fecha": "",
-                        "Sub Total": "",
-                        "Descuento": "",
-                        "Total impuesto Trasladado": "",
-                        "Nombre Impuesto": "",
-                        "Total impuesto Retenido": "",
-                        "Total": "",
-                        "UUID": "",
-                        "Método de Pago": "",
-                        "Forma de Pago": "",
-                        "Moneda": "",
-                        "Tipo de Cambio": "",
-                        "Versión": "",
-                        "Estado": "",
-                        "Estatus": "",
-                        "Validación EFOS": "",
-                        "Fecha Consulta": "",
-                        "Conceptos": "",
-                        "Relacionados": "",
-                        "Tipo Relación": "",
-                        "Traslado IVA 0.160000 %": ""
-                    }
-
-                    # Atributos del comprobante
-                    row["Fecha"] = root.attrib.get("Fecha", "")
-                    row["Sub Total"] = root.attrib.get("SubTotal", "")
-                    row["Descuento"] = root.attrib.get("Descuento", "")
-                    row["Total"] = root.attrib.get("Total", "")
-                    row["Método de Pago"] = root.attrib.get("MetodoPago", "")
-                    
-                    forma_pago_codigo = root.attrib.get("FormaPago", "")
+                    row = {"XML": filename,"Rfc Emisor": "","Nombre Emisor": "","Régimen Fiscal Emisor": "",
+                           "Rfc Receptor": "","Nombre Receptor": "","CP Receptor": "","Régimen Receptor": "",
+                           "Uso Cfdi Receptor": "","Tipo": "","Serie": "","Folio": "","Fecha": "",
+                           "Sub Total": "","Descuento": "","Total impuesto Trasladado": "","Nombre Impuesto": "",
+                           "Total impuesto Retenido": "","Total": "","UUID": "","Método de Pago": "",
+                           "Forma de Pago": "","Moneda": "","Tipo de Cambio": "","Versión": "","Estado": "",
+                           "Estatus": "","Validación EFOS": "","Fecha Consulta": "","Conceptos": "",
+                           "Relacionados": "","Tipo Relación": "","Traslado IVA 0.160000 %": ""}
+                    comprobante = root
+                    row["Fecha"] = comprobante.attrib.get("Fecha", "")
+                    row["Sub Total"] = comprobante.attrib.get("SubTotal", "")
+                    row["Descuento"] = comprobante.attrib.get("Descuento", "")
+                    row["Total"] = comprobante.attrib.get("Total", "")
+                    row["Método de Pago"] = comprobante.attrib.get("MetodoPago", "")
+                    forma_pago_codigo = comprobante.attrib.get("FormaPago", "")
                     forma_pago_desc = codigo_map_forma_pago.get(forma_pago_codigo, "")
                     row["Forma de Pago"] = f"{forma_pago_codigo}-{forma_pago_desc}" if forma_pago_desc else forma_pago_codigo
-                    row["Moneda"] = root.attrib.get("Moneda", "")
-                    row["Tipo de Cambio"] = root.attrib.get("TipoCambio", "")
-                    row["Versión"] = root.attrib.get("Version", "")
-                    row["Serie"] = root.attrib.get("Serie", "")
-                    row["Folio"] = root.attrib.get("Folio", "")
-                    row["Tipo"] = root.attrib.get("TipoDeComprobante", "")
-
-                    # Emisor
-                    emisor = root.find("cfdi:Emisor", namespaces=ns)
+                    row["Moneda"] = comprobante.attrib.get("Moneda", "")
+                    row["Tipo de Cambio"] = comprobante.attrib.get("TipoCambio", "")
+                    row["Versión"] = comprobante.attrib.get("Version", "")
+                    row["Serie"] = comprobante.attrib.get("Serie", "")
+                    row["Folio"] = comprobante.attrib.get("Folio", "")
+                    row["Tipo"] = comprobante.attrib.get("TipoDeComprobante", "")
+                    emisor = comprobante.find("cfdi:Emisor", namespaces=ns)
                     if emisor is not None:
                         row["Rfc Emisor"] = emisor.attrib.get("Rfc", "")
                         row["Nombre Emisor"] = emisor.attrib.get("Nombre", "")
                         row["Régimen Fiscal Emisor"] = emisor.attrib.get("RegimenFiscal", "")
-
-                    # Receptor
-                    receptor = root.find("cfdi:Receptor", namespaces=ns)
+                    receptor = comprobante.find("cfdi:Receptor", namespaces=ns)
                     if receptor is not None:
                         row["Rfc Receptor"] = receptor.attrib.get("Rfc", "")
                         row["Nombre Receptor"] = receptor.attrib.get("Nombre", "")
@@ -266,82 +203,51 @@ def procesar_zip(uploaded_file):
                         row["Régimen Receptor"] = receptor.attrib.get("RegimenFiscalReceptor", "")
                         uso_cfdi_codigo = receptor.attrib.get("UsoCFDI", "")
                         uso_cfdi_desc = codigo_map_uso_cfdi.get(uso_cfdi_codigo, "")
-                        if uso_cfdi_codigo:
-                            row["Uso Cfdi Receptor"] = f"{uso_cfdi_codigo}-{uso_cfdi_desc}" if uso_cfdi_desc else uso_cfdi_codigo
-
-                    # Timbre Fiscal Digital
-                    timbre = root.find(".//tfd:TimbreFiscalDigital", namespaces=ns)
-                    if timbre is not None:
-                        row["UUID"] = timbre.attrib.get("UUID", "")
-
-                    # Impuestos
-                    impuestos_elem = root.find("cfdi:Impuestos", namespaces=ns)
-                    total_trasladado = None
-                    if impuestos_elem is not None:
-                        total_trasladado = impuestos_elem.attrib.get("TotalImpuestosTrasladados", None)
-                    impuestos_nombres = set()
-                    traslado_iva_016 = ""
-
-                    # Si la etiqueta no tiene el total, calculamos manualmente
+                        row["Uso Cfdi Receptor"] = f"{uso_cfdi_codigo}-{uso_cfdi_desc}" if uso_cfdi_desc else uso_cfdi_codigo
+                    timbre = comprobante.find(".//tfd:TimbreFiscalDigital", namespaces=ns)
+                    if timbre is not None: row["UUID"] = timbre.attrib.get("UUID", "")
+                    impuestos_elem = comprobante.find("cfdi:Impuestos", namespaces=ns)
+                    total_trasladado = impuestos_elem.attrib.get("TotalImpuestosTrasladados") if impuestos_elem is not None else None
+                    impuestos_nombres = set(); traslado_iva_016 = ""
                     if total_trasladado is None:
-                        total_trasladado_calc = 0.0
-                        for traslado in root.findall(".//cfdi:Traslado", namespaces=ns):
+                        total_trasladado = 0.0
+                        for traslado in comprobante.findall(".//cfdi:Traslado", namespaces=ns):
                             try:
-                                total_trasladado_calc += float(traslado.attrib.get("Importe", "0"))
+                                total_trasladado += float(traslado.attrib.get("Importe", "0"))
                             except (ValueError, TypeError):
                                 pass
                             imp = traslado.attrib.get("Impuesto", "")
                             if imp:
                                 impuestos_nombres.add(imp)
-                            # Caso específico de IVA 0.160000
-                            if (
-                                traslado.attrib.get("TasaOCuota") == "0.160000"
-                                and traslado.attrib.get("Impuesto") == "002"
-                            ):
+                            if traslado.attrib.get("TasaOCuota") == "0.160000" and traslado.attrib.get("Impuesto") == "002":
                                 traslado_iva_016 = traslado.attrib.get("Importe", "")
-                        row["Total impuesto Trasladado"] = total_trasladado_calc
                     else:
-                        # Asumir que es válido
-                        row["Total impuesto Trasladado"] = total_trasladado
-                        # Ver si hay desglose de los impuestos
-                        for traslado in root.findall(".//cfdi:Traslado", namespaces=ns):
+                        for traslado in comprobante.findall(".//cfdi:Traslado", namespaces=ns):
                             imp = traslado.attrib.get("Impuesto", "")
                             if imp:
                                 impuestos_nombres.add(imp)
-                            if (
-                                traslado.attrib.get("TasaOCuota") == "0.160000"
-                                and traslado.attrib.get("Impuesto") == "002"
-                            ):
+                            if traslado.attrib.get("TasaOCuota") == "0.160000" and traslado.attrib.get("Impuesto") == "002":
                                 traslado_iva_016 = traslado.attrib.get("Importe", "")
-
-                    # Retenciones
                     total_retenido = 0.0
-                    for retencion in root.findall(".//cfdi:Retencion", namespaces=ns):
+                    for retencion in comprobante.findall(".//cfdi:Retencion", namespaces=ns):
                         try:
                             total_retenido += float(retencion.attrib.get("Importe", "0"))
                         except (ValueError, TypeError):
                             pass
+                    row["Total impuesto Trasladado"] = total_trasladado
+                    row["Nombre Impuesto"] = ", ".join(impuestos_nombres)
                     row["Total impuesto Retenido"] = total_retenido
                     row["Traslado IVA 0.160000 %"] = traslado_iva_016
-                    row["Nombre Impuesto"] = ", ".join(impuestos_nombres)
-
-                    # Conceptos
-                    conceptos = root.findall("cfdi:Conceptos/cfdi:Concepto", namespaces=ns)
-                    lista_conceptos = [
-                        f"{c.attrib.get('Descripcion', '')}: {c.attrib.get('Importe', '')}" for c in conceptos
-                    ]
+                    conceptos = comprobante.findall("cfdi:Conceptos/cfdi:Concepto", namespaces=ns)
+                    lista_conceptos = [f"{c.attrib.get('Descripcion', '')}: {c.attrib.get('Importe', '')}" for c in conceptos]
                     row["Conceptos"] = "; ".join(lista_conceptos)
                     rows.append(row)
     return rows
 
-###############################################################################
-#   FUNCIONES PARA MOSTRAR SUMATORIAS Y TABLAS
-###############################################################################
 def mostrar_sumatorias(df, columnas_sumar):
     sumas = {}
     for col in columnas_sumar:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-        sumas[col] = df[col].sum()
+        sumas[col] = pd.to_numeric(df[col], errors='coerce').sum()
     return sumas
 
 def mostrar_tabla_seccion(df, titulo, ancho=2500):
@@ -373,14 +279,6 @@ def exportar_excel_single(df, sheet_name="Datos"):
     return output.getvalue()
 
 def exportar_datos(df_recibidos, df_emitidos, formato="Excel"):
-    """
-    Exporta los datos (recibidos y emitidos) en el formato elegido.
-    Aplica corrección de valores no numéricos antes de exportar.
-    """
-    # Antes de exportar, aseguramos que no haya valores erróneos
-    df_recibidos = detectar_y_corregir_valores(df_recibidos, resumen_cols)
-    df_emitidos = detectar_y_corregir_valores(df_emitidos, resumen_cols)
-
     output = io.BytesIO()
     if formato == "Excel":
         df_deducibles = df_recibidos[df_recibidos["Deducible"] == True]
@@ -399,7 +297,6 @@ def exportar_datos(df_recibidos, df_emitidos, formato="Excel"):
         mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         file_name = "CFDIs_Fiscales.xlsx"
     elif formato == "CSV":
-        # Para exportar a CSV unificado
         df_recibidos_export = df_recibidos.copy()
         df_emitidos_export = df_emitidos.copy()
         df_recibidos_export.insert(0, "Tipo", "Recibidos")
@@ -417,36 +314,25 @@ def exportar_datos(df_recibidos, df_emitidos, formato="Excel"):
 def section_recibidos():
     st.header("CFDIs Recibidos")
     
-    # Exportar Recibidos (se corrigen valores antes de exportar)
+    # Exportar Recibidos
     with st.expander("Exportar Recibidos"):
         formato_recibidos = st.radio("Seleccionar formato", ["CSV", "Excel", "PDF"], key="formato_export_recibidos")
         alcance_recibidos = st.radio("Exportar", ["Tabla Actual", "Toda la Sección"], key="alcance_export_recibidos")
         if st.button("Exportar Recibidos"):
             if "df_recibidos" in st.session_state and not st.session_state.df_recibidos.empty:
                 if alcance_recibidos == "Tabla Actual":
-                    df_exportar_recibidos = st.session_state.filtered_df.copy()
+                    try:
+                        df_exportar_recibidos = st.session_state.filtered_df.copy()
+                    except NameError:
+                        df_exportar_recibidos = st.session_state.df_recibidos.copy()
                 else:
                     df_exportar_recibidos = st.session_state.df_recibidos.copy()
-
-                # Corregir valores no numéricos en df_exportar_recibidos
-                df_exportar_recibidos = detectar_y_corregir_valores(df_exportar_recibidos, resumen_cols)
-                
                 if formato_recibidos == "CSV":
                     datos_csv = exportar_csv_single(df_exportar_recibidos)
-                    st.download_button(
-                        label="Descargar CSV",
-                        data=datos_csv,
-                        file_name="recibidos_exportados.csv",
-                        mime="text/csv"
-                    )
+                    st.download_button(label="Descargar CSV", data=datos_csv, file_name="recibidos_exportados.csv", mime="text/csv")
                 elif formato_recibidos == "Excel":
                     datos_excel = exportar_excel_single(df_exportar_recibidos, "Recibidos")
-                    st.download_button(
-                        label="Descargar Excel",
-                        data=datos_excel,
-                        file_name="recibidos_exportados.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    st.download_button(label="Descargar Excel", data=datos_excel, file_name="recibidos_exportados.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 elif formato_recibidos == "PDF":
                     st.warning("Exportación a PDF no implementada en este ejemplo.")
             else:
@@ -464,8 +350,6 @@ def section_recibidos():
                 # Filtrar duplicados antes de concatenar
                 new_df = filtrar_duplicados_por_uuid(new_df, st.session_state.df_recibidos, "UUID")
                 if not new_df.empty:
-                    # Corregimos valores no numéricos antes de guardar
-                    new_df = detectar_y_corregir_valores(new_df, resumen_cols)
                     st.session_state.df_recibidos = pd.concat([st.session_state.df_recibidos, new_df], ignore_index=True)
                     st.success(f"Se han cargado {len(new_df)} CFDIs Recibidos.")
                 else:
@@ -485,8 +369,10 @@ def section_recibidos():
         df_rec["Periodo"] = df_rec["Fecha"].apply(lambda x: x[:7] if isinstance(x, str) else "")
         periodos = sorted(df_rec["Periodo"].dropna().unique().tolist())
         
+        # Verificar si hay periodos disponibles
         if periodos:
             periodo_seleccionado = st.selectbox("Periodo", options=periodos, index=len(periodos)-1, key="seleccion_periodo_recibidos")
+            # Filtrar DataFrame según el periodo seleccionado
             df_rec_filtrado = df_rec[df_rec["Periodo"] == periodo_seleccionado]
         else:
             st.warning("No hay periodos disponibles para seleccionar.")
@@ -494,21 +380,27 @@ def section_recibidos():
         
         if not df_rec_filtrado.empty:
             st.sidebar.header("Filtros Adicionales")
+            # Filtro por Emisor
             emisores = ["Todos"] + sorted(df_rec_filtrado.apply(lambda row: f"{row['Rfc Emisor']} - {row['Nombre Emisor']}", axis=1).unique().tolist())
             emisores_seleccionado = st.sidebar.selectbox("Filtrar por Emisor (RFC - Nombre)", options=emisores, key="filtro_recibidos_emisor")
             
+            # Filtro por Uso CFDI Receptor
             uso_cfdi_opciones = ["Todos"] + sorted(df_rec_filtrado["Uso Cfdi Receptor"].unique().tolist())
             uso_cfdi_seleccionado = st.sidebar.selectbox("Filtrar por Uso CFDI Receptor", options=uso_cfdi_opciones, key="filtro_recibidos_uso")
             
+            # Filtro por Forma de Pago
             forma_pago_opciones = ["Todos"] + sorted(df_rec_filtrado["Forma de Pago"].unique().tolist())
             forma_pago_seleccionado = st.sidebar.selectbox("Filtrar por Forma de Pago", options=forma_pago_opciones, key="filtro_recibidos_forma")
             
+            # Botones para Seleccionar/Deseleccionar Todos
             col_sel, col_desel = st.sidebar.columns(2)
             if col_sel.button("Seleccionar todos", key="sel_all_recibidos"):
+                # Actualizar solo los datos filtrados
                 st.session_state.df_recibidos.loc[df_rec_filtrado.index, "Deducible"] = True
             if col_desel.button("Deseleccionar todos", key="desel_all_recibidos"):
                 st.session_state.df_recibidos.loc[df_rec_filtrado.index, "Deducible"] = False
             
+            # Aplicar Filtros Adicionales
             if emisores_seleccionado != "Todos":
                 rfc_emisor_filtrar = emisores_seleccionado.split(' - ')[0]
                 df_rec_filtrado = df_rec_filtrado[df_rec_filtrado["Rfc Emisor"] == rfc_emisor_filtrar]
@@ -540,7 +432,7 @@ def section_recibidos():
             # Guardar DataFrame Filtrado para Exportaciones Parciales (Tabla Actual)
             st.session_state.filtered_df = df_rec_filtrado.copy()
         
-            # Tabs para Deducibles y No Deducibles
+            # Tabs para Deducibles y No Deducibles Basados en Datos Filtrados
             tabs_recibidos = st.tabs(["Deducibles", "No Deducibles"])
             with tabs_recibidos[0]:
                 deducible_df = df_rec_filtrado[df_rec_filtrado["Deducible"] == True]
@@ -561,36 +453,25 @@ def section_recibidos():
 def section_emitidos():
     st.header("CFDIs Emitidos")
     
-    # Exportar Emitidos (se corrigen valores antes de exportar)
+    # Exportar Emitidos
     with st.expander("Exportar Emitidos"):
         formato_emitidos = st.radio("Seleccionar formato", ["CSV", "Excel", "PDF"], key="formato_export_emitidos")
         alcance_emitidos = st.radio("Exportar", ["Tabla Actual", "Toda la Sección"], key="alcance_export_emitidos")
         if st.button("Exportar Emitidos"):
             if "df_emitidos" in st.session_state and not st.session_state.df_emitidos.empty:
                 if alcance_emitidos == "Tabla Actual":
-                    df_exportar_emitidos = st.session_state.filtered_df_e.copy()
+                    try:
+                        df_exportar_emitidos = st.session_state.filtered_df_e.copy()
+                    except NameError:
+                        df_exportar_emitidos = st.session_state.df_emitidos.copy()
                 else:
                     df_exportar_emitidos = st.session_state.df_emitidos.copy()
-
-                # Corregir valores no numéricos
-                df_exportar_emitidos = detectar_y_corregir_valores(df_exportar_emitidos, resumen_cols)
-                
                 if formato_emitidos == "CSV":
                     datos_csv = exportar_csv_single(df_exportar_emitidos)
-                    st.download_button(
-                        label="Descargar CSV",
-                        data=datos_csv,
-                        file_name="emitidos_exportados.csv",
-                        mime="text/csv"
-                    )
+                    st.download_button(label="Descargar CSV", data=datos_csv, file_name="emitidos_exportados.csv", mime="text/csv")
                 elif formato_emitidos == "Excel":
                     datos_excel = exportar_excel_single(df_exportar_emitidos, "Emitidos")
-                    st.download_button(
-                        label="Descargar Excel",
-                        data=datos_excel,
-                        file_name="emitidos_exportados.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    st.download_button(label="Descargar Excel", data=datos_excel, file_name="emitidos_exportados.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 elif formato_emitidos == "PDF":
                     st.warning("Exportación a PDF no implementada en este ejemplo.")
             else:
@@ -605,11 +486,9 @@ def section_emitidos():
             if identificar_tipo_zip(rows, "Emitidos"):
                 new_df = pd.DataFrame(rows)
                 new_df["Seleccionar"] = True
-                # Filtrar duplicados
+                # Filtrar duplicados antes de concatenar
                 new_df = filtrar_duplicados_por_uuid(new_df, st.session_state.df_emitidos, "UUID")
                 if not new_df.empty:
-                    # Corregir valores no numéricos antes de guardar
-                    new_df = detectar_y_corregir_valores(new_df, resumen_cols)
                     st.session_state.df_emitidos = pd.concat([st.session_state.df_emitidos, new_df], ignore_index=True)
                     st.success(f"Se han cargado {len(new_df)} CFDIs Emitidos.")
                 else:
@@ -623,13 +502,16 @@ def section_emitidos():
     if not st.session_state.df_emitidos.empty:
         columnas_sumar = resumen_cols
         
+        # Solicitar Selección de Periodo Antes de Mostrar Datos
         st.subheader("Selecciona el Periodo que Deseas Visualizar")
         df_emit = st.session_state.df_emitidos.copy()
         df_emit["Periodo"] = df_emit["Fecha"].apply(lambda x: x[:7] if isinstance(x, str) else "")
         periodos = sorted(df_emit["Periodo"].dropna().unique().tolist())
         
+        # Verificar si hay periodos disponibles
         if periodos:
             periodo_seleccionado_e = st.selectbox("Periodo", options=periodos, index=len(periodos)-1, key="seleccion_periodo_emitidos")
+            # Filtrar DataFrame según el periodo seleccionado
             df_emit_filtrado = df_emit[df_emit["Periodo"] == periodo_seleccionado_e]
         else:
             st.warning("No hay periodos disponibles para seleccionar.")
@@ -637,21 +519,27 @@ def section_emitidos():
         
         if not df_emit_filtrado.empty:
             st.sidebar.header("Filtros Adicionales")
+            # Filtro por Emisor
             emisores_e = ["Todos"] + sorted(df_emit_filtrado.apply(lambda row: f"{row['Rfc Emisor']} - {row['Nombre Emisor']}", axis=1).unique().tolist())
             emisores_seleccionado_e = st.sidebar.selectbox("Filtrar por Emisor (RFC - Nombre)", options=emisores_e, key="filtro_emitidos_emisor")
             
+            # Filtro por Uso CFDI Receptor
             uso_cfdi_opciones_e = ["Todos"] + sorted(df_emit_filtrado["Uso Cfdi Receptor"].unique().tolist())
             uso_cfdi_seleccionado_e = st.sidebar.selectbox("Filtrar por Uso CFDI Receptor", options=uso_cfdi_opciones_e, key="filtro_emitidos_uso")
             
+            # Filtro por Forma de Pago
             forma_pago_opciones_e = ["Todos"] + sorted(df_emit_filtrado["Forma de Pago"].unique().tolist())
             forma_pago_seleccionado_e = st.sidebar.selectbox("Filtrar por Forma de Pago", options=forma_pago_opciones_e, key="filtro_emitidos_forma")
             
+            # Botones para Seleccionar/Deseleccionar Todos
             col_sel_e, col_desel_e = st.sidebar.columns(2)
             if col_sel_e.button("Seleccionar todos", key="sel_all_emitidos"):
+                # Actualizar solo los datos filtrados
                 st.session_state.df_emitidos.loc[df_emit_filtrado.index, "Seleccionar"] = True
             if col_desel_e.button("Deseleccionar todos", key="desel_all_emitidos"):
                 st.session_state.df_emitidos.loc[df_emit_filtrado.index, "Seleccionar"] = False
             
+            # Aplicar Filtros Adicionales
             if emisores_seleccionado_e != "Todos":
                 rfc_emisor_filtrar_e = emisores_seleccionado_e.split(' - ')[0]
                 df_emit_filtrado = df_emit_filtrado[df_emit_filtrado["Rfc Emisor"] == rfc_emisor_filtrar_e]
@@ -660,7 +548,7 @@ def section_emitidos():
             if forma_pago_seleccionado_e != "Todos":
                 df_emit_filtrado = df_emit_filtrado[df_emit_filtrado["Forma de Pago"] == forma_pago_seleccionado_e]
         
-            # AgGrid
+            # Mostrar AgGrid con Datos Filtrados
             gb_e = GridOptionsBuilder.from_dataframe(df_emit_filtrado)
             gb_e.configure_column("Seleccionar", editable=True, cellEditor='agCheckboxCellEditor', pinned=True)
             gb_e.configure_default_column(editable=True, resizable=True)
@@ -674,16 +562,15 @@ def section_emitidos():
                 width=2500
             )
             edited_df_e = pd.DataFrame(grid_response_e["data"])
-
-            # Actualizar 'Seleccionar'
+            # Actualizar el estado de 'Seleccionar' en el DataFrame original
             for _, row in edited_df_e.iterrows():
                 identifier = row["XML"]
                 st.session_state.df_emitidos.loc[st.session_state.df_emitidos["XML"] == identifier, "Seleccionar"] = row["Seleccionar"]
 
-            # Guardar DF filtrado para exportaciones parciales
+            # Guardamos DF filtrado para exportaciones parciales (Tabla Actual)
             st.session_state.filtered_df_e = df_emit_filtrado.copy()
         
-            # Tabs para Seleccionados y No Seleccionados
+            # Tabs para CFDIs Seleccionados y No Seleccionados basados en datos filtrados
             tabs_emitidos = st.tabs(["CFDIs Seleccionados", "CFDIs No Seleccionados"])
             with tabs_emitidos[0]:
                 seleccionados_df = df_emit_filtrado[df_emit_filtrado["Seleccionar"] == True]
@@ -704,22 +591,24 @@ def section_emitidos():
 def section_resumen():
     st.header("Resumen")
     
+    # Solicitar Selección de Periodo Antes de Mostrar Datos
     st.subheader("Selecciona el Periodo que Deseas Visualizar")
     
-    # Periodos en Recibidos
+    # Obtener periodos de Recibidos
     periodos_rec = []
     if "df_recibidos" in st.session_state and not st.session_state.df_recibidos.empty:
         df_rec = st.session_state.df_recibidos.copy()
         df_rec["Periodo"] = df_rec["Fecha"].apply(lambda x: x[:7] if isinstance(x, str) else "")
         periodos_rec = df_rec["Periodo"].dropna().unique().tolist()
     
-    # Periodos en Emitidos
+    # Obtener periodos de Emitidos
     periodos_emit = []
     if "df_emitidos" in st.session_state and not st.session_state.df_emitidos.empty:
         df_emit = st.session_state.df_emitidos.copy()
         df_emit["Periodo"] = df_emit["Fecha"].apply(lambda x: x[:7] if isinstance(x, str) else "")
         periodos_emit = df_emit["Periodo"].dropna().unique().tolist()
     
+    # Combinar y ordenar periodos
     periodos_combined = sorted(list(set(periodos_rec + periodos_emit)))
     
     if periodos_combined:
@@ -733,7 +622,7 @@ def section_resumen():
         st.warning("No hay periodos disponibles para seleccionar.")
         periodo_seleccionado = None
     
-    # Filtrar Recibidos
+    # Filtrar Recibidos por el periodo seleccionado
     if periodo_seleccionado and "df_recibidos" in st.session_state and not st.session_state.df_recibidos.empty:
         df_rec_filtrado = st.session_state.df_recibidos.copy()
         df_rec_filtrado["Periodo"] = df_rec_filtrado["Fecha"].apply(lambda x: x[:7] if isinstance(x, str) else "")
@@ -741,7 +630,7 @@ def section_resumen():
     else:
         df_rec_filtrado = pd.DataFrame()
     
-    # Filtrar Emitidos
+    # Filtrar Emitidos por el periodo seleccionado
     if periodo_seleccionado and "df_emitidos" in st.session_state and not st.session_state.df_emitidos.empty:
         df_emit_filtrado = st.session_state.df_emitidos.copy()
         df_emit_filtrado["Periodo"] = df_emit_filtrado["Fecha"].apply(lambda x: x[:7] if isinstance(x, str) else "")
@@ -785,17 +674,13 @@ def section_resumen():
     with st.container():
         # Tablas Detalladas para Recibidos
         if not df_rec_filtrado.empty:
-            columnas_mostrar = [
-                "Rfc Emisor", "Nombre Emisor", "Sub Total", "Descuento",
-                "Total impuesto Trasladado", "Total impuesto Retenido", "Total"
-            ]
-            # Deducibles
+            columnas_mostrar = ["Rfc Emisor", "Nombre Emisor", "Sub Total", "Descuento",
+                               "Total impuesto Trasladado", "Total impuesto Retenido", "Total"]
             if not df_rec_filtrado[df_rec_filtrado["Deducible"] == True].empty:
                 mostrar_tabla_seccion(
                     df_rec_filtrado[df_rec_filtrado["Deducible"] == True][columnas_mostrar],
                     "XMLs Deducibles"
                 )
-            # No Deducibles
             if not df_rec_filtrado[df_rec_filtrado["Deducible"] == False].empty:
                 mostrar_tabla_seccion(
                     df_rec_filtrado[df_rec_filtrado["Deducible"] == False][columnas_mostrar],
@@ -806,17 +691,13 @@ def section_resumen():
         
         # Tablas Detalladas para Emitidos
         if not df_emit_filtrado.empty:
-            columnas_mostrar = [
-                "Rfc Emisor", "Nombre Emisor", "Sub Total", "Descuento",
-                "Total impuesto Trasladado", "Total impuesto Retenido", "Total"
-            ]
-            # Seleccionados
+            columnas_mostrar = ["Rfc Emisor", "Nombre Emisor", "Sub Total", "Descuento",
+                               "Total impuesto Trasladado", "Total impuesto Retenido", "Total"]
             if not df_emit_filtrado[df_emit_filtrado["Seleccionar"] == True].empty:
                 mostrar_tabla_seccion(
                     df_emit_filtrado[df_emit_filtrado["Seleccionar"] == True][columnas_mostrar],
                     "CFDIs Emitidos"
                 )
-            # No Seleccionados
             if not df_emit_filtrado[df_emit_filtrado["Seleccionar"] == False].empty:
                 mostrar_tabla_seccion(
                     df_emit_filtrado[df_emit_filtrado["Seleccionar"] == False][columnas_mostrar],
@@ -847,34 +728,26 @@ def section_avance():
                 
                 # Procesar CFDIs Recibidos
                 if not df_recibidos.empty:
-                    # Filtrar duplicados
+                    # Filtrar duplicados antes de concatenar
                     df_recibidos = filtrar_duplicados_por_uuid(df_recibidos, st.session_state.df_recibidos, "UUID")
-                    # Corregir datos no numéricos
-                    df_recibidos = detectar_y_corregir_valores(df_recibidos, resumen_cols)
                     st.session_state.df_recibidos = pd.concat([st.session_state.df_recibidos, df_recibidos], ignore_index=True)
                 
                 # Procesar CFDIs Emitidos
                 if not df_emitidos.empty:
-                    # Filtrar duplicados
+                    # Filtrar duplicados antes de concatenar
                     df_emitidos = filtrar_duplicados_por_uuid(df_emitidos, st.session_state.df_emitidos, "UUID")
-                    # Corregir datos no numéricos
-                    df_emitidos = detectar_y_corregir_valores(df_emitidos, resumen_cols)
                     st.session_state.df_emitidos = pd.concat([st.session_state.df_emitidos, df_emitidos], ignore_index=True)
                 
+                # Mostrar mensaje de éxito
                 st.success("✅ Avance cargado exitosamente.")
             except Exception as e:
                 st.error(f"❌ Error al cargar el archivo: {e}")
+
 
 ###############################################################################
 #     FUNCIÓN PARA CARGAR PROGRESO DESDE UN ARCHIVO EXCEL                     #
 ###############################################################################
 def cargar_progreso(file):
-    """
-    Carga datos desde un archivo Excel con sheets:
-    - Recibidos
-    - Emitidos
-    y los retorna como df_recibidos, df_emitidos
-    """
     try:
         df_recibidos = pd.read_excel(file, sheet_name="Recibidos")
         df_emitidos = pd.read_excel(file, sheet_name="Emitidos")
@@ -887,32 +760,13 @@ def cargar_progreso(file):
 #     FUNCIÓN PARA GUARDAR AVANCE EN UN ARCHIVO EXCEL                        #
 ###############################################################################
 def guardar_avance():
-    """
-    Guarda en un archivo Excel (con múltiples sheets) los datos actuales
-    de df_recibidos y df_emitidos, corrigiendo antes los valores no numéricos.
-    """
     st.header("Guardar Avance")
     if st.button("💾 Guardar Avance"):
         if "df_recibidos" in st.session_state and "df_emitidos" in st.session_state:
-            df_recibidos = st.session_state.df_recibidos.copy()
-            df_emitidos = st.session_state.df_emitidos.copy()
-            
-            # Corregimos valores no numéricos antes de guardar
-            df_recibidos = detectar_y_corregir_valores(df_recibidos, resumen_cols)
-            df_emitidos = detectar_y_corregir_valores(df_emitidos, resumen_cols)
-            
-            # Exportamos a Excel
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df_recibidos.to_excel(writer, sheet_name="Recibidos", index=False)
-                df_emitidos.to_excel(writer, sheet_name="Emitidos", index=False)
-            output.seek(0)
-            st.download_button(
-                label="📥 Descargar archivo de avance",
-                data=output,
-                file_name="avance_cfds.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            df_recibidos = st.session_state.df_recibidos
+            df_emitidos = st.session_state.df_emitidos
+            output, file_name, mime = exportar_datos(df_recibidos, df_emitidos, formato="Excel")
+            st.download_button(label="📥 Descargar archivo de avance", data=output, file_name=file_name, mime=mime)
         else:
             st.warning("No hay datos disponibles para guardar. Verifica que estén cargados los CFDIs Emitidos y Recibidos.")
 
@@ -922,22 +776,21 @@ def guardar_avance():
 st.title("Procesador de XMLs desde ZIP - CFDI 4.0")
 
 # Opciones de Avance en la barra lateral
-with st.sidebar.expander("📁 Guardar o Cargar Avance"):
+with st.sidebar.expander("📁 Guardar o Cagar Avance"):
     section_avance()
 
 # Selección de sección
 seccion = st.sidebar.radio("Tipo de CFDIS", ["Recibidos", "Emitidos", "Resumen"], key="seccion")
 
-# Exportar todos los datos (Recibidos y Emitidos) con corrección
+# Exportar todos los datos (recibidos y emitidos)
 with st.sidebar.expander("📤 Exportar Todos los Datos"):
     form_exp = st.radio("Formato de Exportación", ["Excel","CSV"], key="formato_export_todos")
     if st.button("Exportar Todos los Datos"):
         if "df_recibidos" in st.session_state and not st.session_state.df_recibidos.empty and \
            "df_emitidos" in st.session_state and not st.session_state.df_emitidos.empty:
-            df_recibidos = st.session_state.df_recibidos.copy()
-            df_emitidos = st.session_state.df_emitidos.copy()
-            
-            # Se corrigen valores antes de exportar
+            df_recibidos = st.session_state.df_recibidos
+            df_emitidos = st.session_state.df_emitidos
+            resumen_df = pd.DataFrame([mostrar_sumatorias(df_recibidos, resumen_cols)])
             export_data, export_file_name, export_mime = exportar_datos(df_recibidos, df_emitidos, form_exp)
             st.download_button(
                 label=f"📥 Descargar {form_exp}",
